@@ -315,6 +315,16 @@ class DetokenizerManager(MultiHttpWorkerDetokenizerMixin):
         )
         output_routed_experts = self._extract_routed_experts(recv_obj)
 
+        output_routed_experts = []
+        if recv_obj.output_routed_experts is not None:
+            output_routed_experts = [
+                (
+                    output_routed_experts.tolist()
+                    if output_routed_experts is not None
+                    else []
+                )
+                for output_routed_experts in recv_obj.output_routed_experts
+            ]
         return BatchStrOutput(
             rids=recv_obj.rids,
             http_worker_ipcs=recv_obj.http_worker_ipcs,
