@@ -30,6 +30,7 @@ import torch
 import torch.distributed as dist
 from torch import nn
 
+from python.sglang.srt.configs.parallelism_config import RankParallelismConfig
 from sglang.srt.configs import (
     FalconH1Config,
     JetNemotronConfig,
@@ -314,6 +315,33 @@ class ModelRunner(ModelRunnerKVCacheMixin):
         self.remote_instance_transfer_engine = None
         self.remote_instance_transfer_engine_session_id = ""
         self.remote_instance_transfer_engine_weight_info = None
+        self.parallelism_config = None
+        # auxiliary hidden capture mode. TODO: expose this to server args?
+        self.eagle_use_aux_hidden_state = False
+        if self.spec_algorithm.is_eagle3() and not self.is_draft_worker:
+            # load draft config
+            draft_model_config = ModelConfig.from_server_args(
+                server_args,
+                model_path=(server_args.speculative_draft_model_path),
+                model_revision=server_args.speculative_draft_model_revision,
+                is_draft_model=True,
+            )
+            self.eagle_use_aux_hidden_state = True
+
+            try:
+                # get the aux layer from draft model config
+                eagle_config = getattr(
+                    draft_model_config.hf_config, "eagle_config", None
+                )
+                self.eagle_use_aux_hidden_state = eagle_config.get(
+                    "use_aux_hidden_state", True
+                )
+                self.eagle_aux_hidden_state_layer_ids = eagle_config[
+                    "eagle_aux_hidden_state_layer_ids"
+                ]
+            except:
+                # if there is no aux layer, set to None
+                self.eagle_aux_hidden_state_layer_ids = None
 
         # Apply the rank zero filter to logger
         if server_args.show_time_cost:
@@ -392,6 +420,9 @@ class ModelRunner(ModelRunnerKVCacheMixin):
 
         if self.server_args.remote_instance_weight_loader_use_transfer_engine():
             self.remote_instance_init_transfer_engine()
+            self.parallelism_config = RankParallelismConfig.from_parallel_state(
+                self.tp_rank
+            )
 
         if not self.is_draft_worker:
             set_global_expert_location_metadata(
@@ -624,8 +655,10 @@ class ModelRunner(ModelRunnerKVCacheMixin):
         self.remote_instance_transfer_engine.initialize(
             local_ip, "P2PHANDSHAKE", "rdma", envs.MOONCAKE_DEVICE.get()
         )
-        self.remote_instance_transfer_engine_session_id = f"{local_ip}:{self.remote_instance_transfer_engine.get_rpc_port()}"
-    
+        self.remote_instance_transfer_engine_session_id = (
+            f"{local_ip}:{self.remote_instance_transfer_engine.get_rpc_port()}"
+        )
+
     def init_routed_experts_capturer(self):
         # TODO: the redundant logic with TpModelWorker
         max_running_requests = min(

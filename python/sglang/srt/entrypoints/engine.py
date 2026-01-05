@@ -63,6 +63,10 @@ from sglang.srt.managers.multi_tokenizer_mixin import MultiTokenizerRouter
 from sglang.srt.managers.scheduler import run_scheduler_process
 from sglang.srt.managers.template_manager import TemplateManager
 from sglang.srt.managers.tokenizer_manager import TokenizerManager
+from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
+    parse_parallelism_config_from_scheduler_infos,
+    parse_remote_instance_transfer_engine_info_from_scheduler_infos,
+)
 from sglang.srt.server_args import PortArgs, ServerArgs
 from sglang.srt.tracing.trace import process_tracing_init, trace_set_thread_info
 from sglang.srt.utils import (
@@ -165,6 +169,14 @@ class Engine(EngineBase):
         self.template_manager = template_manager
         self.scheduler_info = scheduler_infos[0]
         self.port_args = port_args
+        self.remote_instance_transfer_engine_info = (
+            parse_remote_instance_transfer_engine_info_from_scheduler_infos(
+                scheduler_infos
+            )
+        )
+        self.parallelism_config = parse_parallelism_config_from_scheduler_infos(
+            scheduler_infos
+        )
 
         # Initialize ZMQ sockets
         context = zmq.Context(2)
