@@ -32,11 +32,12 @@ class NodeRegistry:
         # TODO: here we may need to assume that tp_size always equal to world_size?
         self.server_args = server_args
         self.nodes: Dict[int, NodeInfo] = {}
-        self._populate_node_mapping()
         if hasattr(self.server_args, 'node_hosts') and self.server_args.node_hosts:
             self.noderank2host = json.loads(self.server_args.node_hosts)
         else:
             self.noderank2host = None
+        self._populate_node_mapping()
+
 
     def _populate_node_mapping(self):
         """Build node registry using same logic as scheduler_launcher.py"""
