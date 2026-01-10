@@ -66,6 +66,9 @@ from sglang.srt.managers.tokenizer_manager import TokenizerManager
 from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
     parse_remote_instance_transfer_engine_info_from_scheduler_infos,
 )
+from sglang.srt.model_loader.inter_node_transfer_engine_comm import (
+    init_transfer_engine_info_server,
+)
 from sglang.srt.server_args import PortArgs, ServerArgs
 from sglang.srt.tracing.trace import process_tracing_init, trace_set_thread_info
 from sglang.srt.utils import (
@@ -923,14 +926,30 @@ def _launch_subprocesses(
         port_args=port_args,
         run_scheduler_process_func=run_scheduler_process_func,
     )
-
     if server_args.node_rank >= 1:
         # In multi-node cases, non-zero rank nodes do not need to run tokenizer or detokenizer,
         # so they can just wait here.
-
+        scheduler_infos = []
         for reader in scheduler_pipe_readers:
             data = reader.recv()
             assert data["status"] == "ready"
+            scheduler_infos.append(data)
+
+        # Start ZMQ server on non-head nodes to serve transfer engine info
+        if server_args.nnodes > 1 and server_args.remote_instance_weight_loader_start_seed_via_transfer_engine:
+            assert server_args.inter_node_transfer_engine_info_port is not None, \
+                "For multinode scenarios, inter_node_transfer_engine_info_port must be set " \
+                "when `remote_instance_weight_loader_start_seed_via_transfer_engine` is enabled"
+            # Get the transfer engine data ahead of time.
+            local_transfer_engine_info = parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos)
+
+            server = init_transfer_engine_info_server(
+                server_args.inter_node_transfer_engine_info_port,
+                server_args.node_rank
+            )
+            server.set_transfer_engine_info(local_transfer_engine_info)
+            server.start()
+            logger.info(f"Node {server_args.node_rank}: Started transfer engine info ZMQ server on port {server_args.inter_node_transfer_engine_info_port}")
 
         if os.getenv("SGLANG_BLOCK_NONZERO_RANK_CHILDREN") == "0":
             # When using `Engine` as a Python API, we don't want to block here.
