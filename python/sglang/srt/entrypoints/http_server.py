@@ -1777,7 +1777,8 @@ def launch_server(
     remote_instance_transfer_engine_info = (
         parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos)
     )
-
+    logger.info(f"debug scheduler_infos {scheduler_infos}")
+    logger.info(f"debug remote_instance_transfer_engine_info {remote_instance_transfer_engine_info}")
     # Initialize node registry for cross-node communication
     node_registry = None
     try:

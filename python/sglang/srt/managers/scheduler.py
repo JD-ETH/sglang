@@ -2916,11 +2916,14 @@ def run_scheduler_process(
             "max_total_num_tokens": scheduler.max_total_num_tokens,
             "max_req_input_len": scheduler.max_req_input_len,
         }
+        tt = server_args.remote_instance_weight_loader_use_transfer_engine()
+        logger.info(f"server_args.remote_instance_weight_loader_use_transfer_engine(): {tt}")
         if server_args.remote_instance_weight_loader_use_transfer_engine():
             (
                 remote_instance_transfer_engine_session_id,
                 remote_instance_transfer_engine_weights_info_dict,
             ) = scheduler.get_remote_instance_transfer_engine_info()
+            logger.info(f"updated remote_instance_transfer_engine_session_id {remote_instance_transfer_engine_session_id}, {remote_instance_transfer_engine_weights_info_dict}")
             result_dict.update(
                 {
                     "tp_rank": tp_rank,

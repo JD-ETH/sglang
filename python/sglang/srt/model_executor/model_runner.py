@@ -620,11 +620,16 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             )
             return
         self.remote_instance_transfer_engine = TransferEngine()
+        logger.info(f"in model runner, self.remote_instance_transfer_engine")
         local_ip = get_local_ip_auto()
+        logger.info(f"in model runner, self.remote_instance_transfer_engine, local ip {local_ip}")
+        xx =  envs.MOONCAKE_DEVICE.get()
         self.remote_instance_transfer_engine.initialize(
-            local_ip, "P2PHANDSHAKE", "rdma", envs.MOONCAKE_DEVICE.get()
+            local_ip, "P2PHANDSHAKE", "rdma", xx
         )
+        
         self.remote_instance_transfer_engine_session_id = f"{local_ip}:{self.remote_instance_transfer_engine.get_rpc_port()}"
+        logger.info(f"in model runner, self.remote_instance_transfer_engine, getting session id {self.remote_instance_transfer_engine_session_id}, geting device {xx}")
     
     def init_routed_experts_capturer(self):
         # TODO: the redundant logic with TpModelWorker
