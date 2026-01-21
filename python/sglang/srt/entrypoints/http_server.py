@@ -872,7 +872,7 @@ async def send_weights_to_remote_instance(
 
 
 @app.get("/get_remote_instance_transfer_engine_info")
-async def get_remote_instance_transfer_engine_info(rank: int = None):
+async def get_remote_instance_transfer_engine_info(rank: int = None,):
     """
     Get remote instance transfer engine info for a given rank.
 
@@ -910,6 +910,7 @@ async def get_remote_instance_transfer_engine_info(rank: int = None):
             return result
 
         # If not available locally, use ZMQ to communicate with appropriate node
+        
         if _global_state.node_registry is None:
             logger.error("Node registry not available for cross-node communication")
             return Response(status_code=HTTPStatus.BAD_REQUEST)
@@ -1775,7 +1776,7 @@ def launch_server(
 
     # Parse info got from the schedulers
     remote_instance_transfer_engine_info = (
-        parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos)
+        parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos,dp_preprocessing=(server_args.dp_size > 1))
     )
     logger.info(f"debug scheduler_infos {scheduler_infos}")
     logger.info(f"debug remote_instance_transfer_engine_info {remote_instance_transfer_engine_info}")

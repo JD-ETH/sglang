@@ -105,18 +105,28 @@ def get_remote_instance_transfer_engine_info_per_rank(seed_url: str, rank: int):
         return None, None
 
 
-def parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos):
+def parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos, dp_preprocessing = False):
     remote_instance_transfer_engine_info = {}
-    for data in scheduler_infos:
-        if (
-            "tp_rank" in data
-            and "remote_instance_transfer_engine_session_id" in data
-            and "remote_instance_transfer_engine_weights_info_dict" in data
-        ):
-            remote_instance_transfer_engine_info[data["tp_rank"]] = (
-                data["remote_instance_transfer_engine_session_id"],
-                data["remote_instance_transfer_engine_weights_info_dict"],
-            )
+    if dp_preprocessing:
+        # when dp enabled, there will be only one dict received, 
+        # and there's one item `all_tp_ranks_and_info` involving 
+        # all metadata of current dp group:
+        # scheduler_infos["all_tp_ranks_and_info"]: 
+        # {tp_rank: (data["remote_instance_transfer_engine_session_id"], data["remote_instance_transfer_engine_weights_info_dict"],)}
+        for data in scheduler_infos:
+            assert "all_tp_ranks_and_info" in data, "in dp, there should be `all_tp_ranks_and_info` dict"
+            remote_instance_transfer_engine_info.update(data["all_tp_ranks_and_info"])
+    else:
+        for data in scheduler_infos:
+            if (
+                "tp_rank" in data
+                and "remote_instance_transfer_engine_session_id" in data
+                and "remote_instance_transfer_engine_weights_info_dict" in data
+            ):
+                remote_instance_transfer_engine_info[data["tp_rank"]] = (
+                    data["remote_instance_transfer_engine_session_id"],
+                    data["remote_instance_transfer_engine_weights_info_dict"],
+                )
     return remote_instance_transfer_engine_info
 
 
