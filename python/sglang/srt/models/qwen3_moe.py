@@ -1051,7 +1051,7 @@ class Qwen3MoeForCausalLM(nn.Module):
             ("gate_up_proj", "gate_proj", 0),
             ("gate_up_proj", "up_proj", 1),
         ]
-
+        updated_name = []
         expert_params_mapping = FusedMoE.make_expert_params_mapping(
             ckpt_gate_proj_name="gate_proj",
             ckpt_down_proj_name="down_proj",
@@ -1099,6 +1099,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
+                updated_name.append(name)
                 break
             else:
                 # Track if this is an expert weight to enable early skipping
@@ -1126,6 +1127,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                         shard_id=shard_id,
                         expert_id=expert_id,
                     )
+                    updated_name.append(name)
                     break
                 else:
                     if is_expert_weight:
@@ -1144,6 +1146,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                             param, "weight_loader", default_weight_loader
                         )
                         weight_loader(param, loaded_weight)
+                        updated_name.append(name)
                     else:
                         logger.warning(f"Parameter {name} not found in params_dict")
 
@@ -1155,7 +1158,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                 for layer_id in range(self.start_layer, self.end_layer)
                 if isinstance(self.model.layers[layer_id].mlp, Qwen3MoeSparseMoeBlock)
             }
-
+        return updated_name
     @classmethod
     def get_model_config_for_expert_location(cls, config):
         return ModelConfigForExpertLocation(
