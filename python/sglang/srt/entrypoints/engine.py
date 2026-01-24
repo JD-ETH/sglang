@@ -1061,23 +1061,7 @@ def _launch_subprocesses(
         template_manager = None
 
     # Wait for the model to finish loading
-    scheduler_infos = []
-    for i in range(len(scheduler_pipe_readers)):
-        try:
-            data = scheduler_pipe_readers[i].recv()
-        except EOFError:
-            logger.error(
-                f"Rank {i} scheduler is dead. Please check if there are relevant logs."
-            )
-            scheduler_procs[i].join()
-            logger.error(f"Exit code: {scheduler_procs[i].exitcode}")
-            raise
-
-        if data["status"] != "ready":
-            raise RuntimeError(
-                "Initialization failed. Please see the error messages above."
-            )
-        scheduler_infos.append(data)
+    scheduler_infos = _wait_for_scheduler_ready(scheduler_pipe_readers, scheduler_procs)
 
     # Get back some info from scheduler to tokenizer_manager
     tokenizer_manager.max_req_input_len = scheduler_infos[0]["max_req_input_len"]
