@@ -39,7 +39,6 @@ import torch
 import torch.distributed
 from torch.distributed import Backend, ProcessGroup
 
-from sglang.srt.configs.parallelism_config import RankParallelismConfig
 from sglang.srt.environ import envs
 from sglang.srt.utils import (
     direct_register_custom_op,
