@@ -123,6 +123,17 @@ def _postprocess_tensors(
 
     skip_compare_names = []
 
+    # skip non-persistent buffers
+    non_persistent_buffer_patterns = [
+        "cos_sin_cache",  # RoPE cache
+        "inv_freq",  # RoPE inverse frequency (if it exists as buffer)
+    ]
+    for name in raw:
+        for pattern in non_persistent_buffer_patterns:
+            if pattern in name:
+                skip_compare_names.append(name)
+                break
+
     # dequant fp8
     quant_names = [
         name
