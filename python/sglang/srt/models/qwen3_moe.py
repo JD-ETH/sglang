@@ -939,9 +939,24 @@ class Qwen3MoeForCausalLM(nn.Module):
         )
         self.logits_processor = LogitsProcessor(config)
         self.capture_aux_hidden_states = False
+        self.weight_transfering_dict = {}
+        self.is_weight_transfering_recording = False
+        self.initialize_layers()
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.model.embed_tokens
+    def turn_on_weight_transfer_recording(self):
+        self.is_weight_transfering_recording = True
+        # assert len(self.weight_transfering_dict) == 0
+
+    def turn_off_weight_transfer_recording(self):
+        self.is_weight_transfering_recording = False
+        self.weight_transfering_dict = {}
+        self.initialize_layers()
+
+    def initialize_layers(self):
+        for layer_id in range(self.start_layer, self.end_layer):
+            self.weight_transfering_dict[layer_id] = {}
 
     @torch.no_grad()
     def forward(
@@ -1052,6 +1067,8 @@ class Qwen3MoeForCausalLM(nn.Module):
             ("gate_up_proj", "up_proj", 1),
         ]
         updated_name = []
+        could_updated_list = []
+
         expert_params_mapping = FusedMoE.make_expert_params_mapping(
             ckpt_gate_proj_name="gate_proj",
             ckpt_down_proj_name="down_proj",
@@ -1074,7 +1091,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                 )
             ):
                 continue
-
+            
             if "rotary_emb.inv_freq" in name:
                 continue
             for param_name, weight_name, shard_id in stacked_params_mapping:
@@ -1095,7 +1112,14 @@ class Qwen3MoeForCausalLM(nn.Module):
                     continue
                 if name not in params_dict:
                     continue
-
+                if self.is_weight_transfering_recording:
+                    qkv_loaded = self.weight_transfering_dict[layer_id].get("qkv", 0)
+                    qkv_loaded += 1
+                    self.weight_transfering_dict[layer_id]["qkv"] = qkv_loaded
+                    if qkv_loaded == 3:
+                        could_updated_list.append(True)
+                    else:
+                        could_updated_list.append(False)
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
@@ -1117,6 +1141,16 @@ class Qwen3MoeForCausalLM(nn.Module):
                     if name not in params_dict:
                         # Expert weight not on this rank, will be skipped below
                         continue
+
+                    if self.is_weight_transfering_recording:
+                        expert_loaded = self.weight_transfering_dict[layer_id].get(f"expert_{expert_id}", 0)
+                        expert_loaded += 1
+                        self.weight_transfering_dict[layer_id][f"expert_{expert_id}"] = expert_loaded
+                        if expert_loaded == 2:
+                            could_updated_list.append(True)
+                        else:
+                            could_updated_list.append(False)
+
 
                     param = params_dict[name]
                     weight_loader = param.weight_loader
@@ -1147,6 +1181,8 @@ class Qwen3MoeForCausalLM(nn.Module):
                         )
                         weight_loader(param, loaded_weight)
                         updated_name.append(name)
+                        if self.is_weight_transfering_recording:
+                            could_updated_list.append(True)
                     else:
                         logger.warning(f"Parameter {name} not found in params_dict")
 
@@ -1158,7 +1194,12 @@ class Qwen3MoeForCausalLM(nn.Module):
                 for layer_id in range(self.start_layer, self.end_layer)
                 if isinstance(self.model.layers[layer_id].mlp, Qwen3MoeSparseMoeBlock)
             }
-        return updated_name
+        if self.is_weight_transfering_recording:
+            assert len(could_updated_list) == len(updated_name)
+            return updated_name, could_updated_list
+        else:
+            return updated_name
+    
     @classmethod
     def get_model_config_for_expert_location(cls, config):
         return ModelConfigForExpertLocation(
