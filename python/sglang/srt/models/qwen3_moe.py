@@ -28,6 +28,7 @@ from transformers import PretrainedConfig
 
 from sglang.srt.distributed import (
     get_moe_expert_parallel_world_size,
+    get_moe_expert_parallel_rank,
     get_pp_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
@@ -943,6 +944,7 @@ class Qwen3MoeForCausalLM(nn.Module):
         self.is_weight_transfering_recording = False
         self.initialize_layers()
         self.ep_size =  get_moe_expert_parallel_world_size()
+        self.ep_rank =  get_moe_expert_parallel_rank()
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.model.embed_tokens
@@ -1138,19 +1140,24 @@ class Qwen3MoeForCausalLM(nn.Module):
 
                     # Mark as expert weight regardless of whether we can process it
                     is_expert_weight = True
-
+                    ori_name = name
                     name = name.replace(weight_name, param_name)
                     if name not in params_dict:
                         # Expert weight not on this rank, will be skipped below
                         continue
-                    cc = ( "gate" in name)
+                    cc = ( "gate_" in ori_name) or ("up_" in ori_name)
+
+                    # 128
                     thresh = 2 * ( self.config.num_experts// self.ep_size) if cc else (self.config.num_experts// self.ep_size)
                     cc_key = "expert_gate_up" if cc else "expert_down"
                     if self.is_weight_transfering_recording:
+
                         expert_loaded = self.weight_transfering_dict[layer_id].get(cc_key, 0)
                         expert_loaded += 1
                         self.weight_transfering_dict[layer_id][cc_key] = expert_loaded
-                        if expert_loaded == thresh:
+                        start_e = self.ep_rank  *  (self.config.num_experts// self.ep_size)
+                        end_e = (self.ep_rank + 1)  *  (self.config.num_experts// self.ep_size)
+                        if expert_loaded == thresh and  expert_id >= start_e and expert_id < end_e:
                             could_updated_list.append(True)
                             updated_name.append(name)
 
