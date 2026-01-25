@@ -2925,7 +2925,7 @@ def run_scheduler_process(
                 remote_instance_transfer_engine_session_id,
                 remote_instance_transfer_engine_weights_info_dict,
             ) = scheduler.get_remote_instance_transfer_engine_info()
-            logger.info(f"updated remote_instance_transfer_engine_session_id {remote_instance_transfer_engine_session_id}, {remote_instance_transfer_engine_weights_info_dict}")
+            # logger.info(f"updated remote_instance_transfer_engine_session_id {remote_instance_transfer_engine_session_id}, {remote_instance_transfer_engine_weights_info_dict}")
             result_dict.update(
                 {
                     "tp_rank": tp_rank,
