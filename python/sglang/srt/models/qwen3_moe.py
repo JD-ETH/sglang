@@ -243,7 +243,7 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
             prefix=add_prefix("experts", prefix),
             routing_method_type=RoutingMethodType.Renormalize,
         )
-
+        logger.info(f"in qwen3_moe, rank: ep rank/ ep_size {self.experts.moe_ep_rank}/ {self.experts.moe_ep_size}, etprank/size {self.experts.moe_tp_rank} /  {self.experts.moe_tp_size}")
         self.gate = ReplicatedLinear(
             config.hidden_size,
             config.num_experts,
