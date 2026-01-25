@@ -1150,14 +1150,15 @@ class Qwen3MoeForCausalLM(nn.Module):
                     # 128
                     thresh = 2 * ( self.config.num_experts// self.ep_size) if cc else (self.config.num_experts// self.ep_size)
                     cc_key = "expert_gate_up" if cc else "expert_down"
-                    if self.is_weight_transfering_recording:
+                    start_e = self.ep_rank  *  (self.config.num_experts// self.ep_size)
+                    end_e = (self.ep_rank + 1)  *  (self.config.num_experts// self.ep_size)                    
+                    if self.is_weight_transfering_recording and expert_id >= start_e and expert_id < end_e:
 
                         expert_loaded = self.weight_transfering_dict[layer_id].get(cc_key, 0)
                         expert_loaded += 1
                         self.weight_transfering_dict[layer_id][cc_key] = expert_loaded
-                        start_e = self.ep_rank  *  (self.config.num_experts// self.ep_size)
-                        end_e = (self.ep_rank + 1)  *  (self.config.num_experts// self.ep_size)
-                        if expert_loaded == thresh and  expert_id >= start_e and expert_id < end_e:
+
+                        if expert_loaded == thresh:
                             could_updated_list.append(True)
                             updated_name.append(name)
 
