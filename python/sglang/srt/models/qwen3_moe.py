@@ -942,6 +942,7 @@ class Qwen3MoeForCausalLM(nn.Module):
         self.weight_transfering_dict = {}
         self.is_weight_transfering_recording = False
         self.initialize_layers()
+        self.ep_size =  get_moe_expert_parallel_world_size()
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.model.embed_tokens
@@ -1118,12 +1119,13 @@ class Qwen3MoeForCausalLM(nn.Module):
                     self.weight_transfering_dict[layer_id]["qkv"] = qkv_loaded
                     if qkv_loaded == 3:
                         could_updated_list.append(True)
-                    else:
-                        could_updated_list.append(False)
+                        updated_name.append(name)
+                    # else:
+                    #     could_updated_list.append(False)
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
-                updated_name.append(name)
+                
                 break
             else:
                 # Track if this is an expert weight to enable early skipping
@@ -1141,16 +1143,16 @@ class Qwen3MoeForCausalLM(nn.Module):
                     if name not in params_dict:
                         # Expert weight not on this rank, will be skipped below
                         continue
-
+                    cc = ( "gate" in name)
+                    thresh = 2 * ( self.config.num_experts// self.ep_size) if cc else (self.config.num_experts// self.ep_size)
+                    cc_key = "expert_gate_up" if cc else "expert_down"
                     if self.is_weight_transfering_recording:
-                        expert_loaded = self.weight_transfering_dict[layer_id].get(f"expert_{expert_id}", 0)
+                        expert_loaded = self.weight_transfering_dict[layer_id].get(cc_key, 0)
                         expert_loaded += 1
-                        self.weight_transfering_dict[layer_id][f"expert_{expert_id}"] = expert_loaded
-                        if expert_loaded == 2:
+                        self.weight_transfering_dict[layer_id][cc_key] = expert_loaded
+                        if expert_loaded == thresh:
                             could_updated_list.append(True)
-                        else:
-                            could_updated_list.append(False)
-
+                            updated_name.append(name)
 
                     param = params_dict[name]
                     weight_loader = param.weight_loader
@@ -1161,7 +1163,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                         shard_id=shard_id,
                         expert_id=expert_id,
                     )
-                    updated_name.append(name)
+                    # updated_name.append(name)
                     break
                 else:
                     if is_expert_weight:
@@ -1194,11 +1196,11 @@ class Qwen3MoeForCausalLM(nn.Module):
                 for layer_id in range(self.start_layer, self.end_layer)
                 if isinstance(self.model.layers[layer_id].mlp, Qwen3MoeSparseMoeBlock)
             }
-        if self.is_weight_transfering_recording:
-            assert len(could_updated_list) == len(updated_name)
-            return updated_name, could_updated_list
-        else:
-            return updated_name
+        # if self.is_weight_transfering_recording:
+        #     assert len(could_updated_list) == len(updated_name)
+        #     return updated_name, could_updated_list
+        # else:
+        return updated_name
     
     @classmethod
     def get_model_config_for_expert_location(cls, config):
