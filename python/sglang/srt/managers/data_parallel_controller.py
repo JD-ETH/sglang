@@ -505,7 +505,7 @@ class DataParallelController:
             # the following `self.remote_weight_info_dict` gets info from each single scheduler_info,
             # so the `dp_preprocessing = False`
             self.remote_weight_info_dict = parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_info)
-            logger.info(f"in dp, self.remote_weight_info_dict ready: {self.remote_weight_info_dict}")
+            # logger.info(f"in dp, self.remote_weight_info_dict ready: {self.remote_weight_info_dict}")
 
     def maybe_external_dp_rank_routing(self, req: Req):
         if req.data_parallel_rank is not None:
