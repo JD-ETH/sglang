@@ -1208,7 +1208,7 @@ class Qwen3MoeForCausalLM(nn.Module):
         #     assert len(could_updated_list) == len(updated_name)
         #     return updated_name, could_updated_list
         # else:
-        logger.info(f"update self.weight_transfering_dict: {self.weight_transfering_dict} ")
+        # logger.info(f"update self.weight_transfering_dict: {self.weight_transfering_dict} ")
         return updated_name
     
     @classmethod
