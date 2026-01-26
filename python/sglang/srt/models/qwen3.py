@@ -494,6 +494,8 @@ class Qwen3ForCausalLM(nn.Module, RemapParamsMixin):
     def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
         stacked_params_mapping = self.stacked_params_mapping
         params_dict = dict(self.named_parameters())
+        updated_params = []  # Track updated parameter names
+
         for name, loaded_weight in weights:
             if "Embedding" in self.config.name_or_path:
                 name = add_prefix(name, "model")
@@ -540,6 +542,7 @@ class Qwen3ForCausalLM(nn.Module, RemapParamsMixin):
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
+                updated_params.append(name)  # Record updated parameter
                 break
             else:
                 # Skip loading extra bias for GPTQ models.
@@ -552,8 +555,11 @@ class Qwen3ForCausalLM(nn.Module, RemapParamsMixin):
                         param, "weight_loader", default_weight_loader
                     )
                     weight_loader(param, loaded_weight)
+                    updated_params.append(name)  # Record updated parameter
                 else:
                     logger.warning(f"Parameter {name} not found in params_dict")
+
+        return updated_params  # Return list of updated parameter names
 
     def get_embed_and_head(self):
         return self.model.embed_tokens.weight, self.lm_head.weight

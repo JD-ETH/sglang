@@ -67,6 +67,9 @@ from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
     parse_parallelism_config_from_scheduler_infos,
     parse_remote_instance_transfer_engine_info_from_scheduler_infos,
 )
+from sglang.srt.model_loader.inter_node_transfer_engine_comm import (
+    init_transfer_engine_info_server,
+)
 from sglang.srt.server_args import PortArgs, ServerArgs
 from sglang.srt.tracing.trace import process_tracing_init, trace_set_thread_info
 from sglang.srt.utils import (
@@ -1017,7 +1020,6 @@ def _launch_subprocesses(
         port_args=port_args,
         run_scheduler_process_func=run_scheduler_process_func,
     )
-
     if server_args.node_rank >= 1:
         scheduler_infos = _wait_for_scheduler_ready(
             scheduler_pipe_readers, scheduler_procs
