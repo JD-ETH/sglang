@@ -134,6 +134,7 @@ from sglang.srt.managers.template_manager import TemplateManager
 from sglang.srt.managers.tokenizer_manager import ServerStatus, TokenizerManager
 from sglang.srt.metrics.func_timer import enable_func_timer
 from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
+    parse_parallelism_config_from_scheduler_infos,
     parse_remote_instance_transfer_engine_info_from_scheduler_infos,
 )
 from sglang.srt.model_loader.inter_node_transfer_engine_comm import (
@@ -180,7 +181,7 @@ class _GlobalState:
     #         )
     # }
     remote_instance_transfer_engine_info: Optional[Dict] = None
-    node_registry: Optional[NodeRegistry] = None
+    parallelism_config_info: Optional[Dict] = None
 
 
 _global_state: Optional[_GlobalState] = None
@@ -948,6 +949,30 @@ async def get_remote_instance_transfer_engine_info(rank: int = None):
     except Exception as e:
         logger.error(f"Failed to get remote instance transfer engine info for rank {rank}: {e}")
         return Response(status_code=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+
+@app.get("/parallelism_config")
+async def parallelism_config(rank: int = 0):
+    """Get parallelism config for a specific TP rank."""
+    if rank < 0:
+        return Response(status_code=HTTPStatus.BAD_REQUEST)
+
+    if (
+        _global_state.parallelism_config_info is None
+        or len(_global_state.parallelism_config_info) == 0
+    ):
+        logger.error("Parallelism config info is not available.")
+        return Response(status_code=HTTPStatus.BAD_REQUEST)
+
+    try:
+        result = {
+            "rank": rank,
+            **dataclasses.asdict(_global_state.parallelism_config_info[rank]),
+        }
+        return result
+    except Exception as e:
+        logger.error(f"Exception: {e}")
+        return Response(status_code=HTTPStatus.BAD_REQUEST)
 
 
 @app.post("/init_weights_update_group")
@@ -1763,7 +1788,6 @@ def launch_server(
     1. The HTTP server, Engine, and TokenizerManager all run in the main process.
     2. Inter-process communication is done through IPC (each process uses a different port) via the ZMQ library.
     """
-    # Launch subprocesses
     tokenizer_manager, template_manager, scheduler_infos, port_args = (
         _launch_subprocesses(
             server_args=server_args,
@@ -1773,9 +1797,11 @@ def launch_server(
         )
     )
 
-    # Parse info got from the schedulers
     remote_instance_transfer_engine_info = (
         parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos)
+    )
+    parallelism_config_info = parse_parallelism_config_from_scheduler_infos(
+        scheduler_infos
     )
 
     # Initialize node registry for cross-node communication
@@ -1798,7 +1824,7 @@ def launch_server(
             template_manager=template_manager,
             scheduler_info=scheduler_infos[0],
             remote_instance_transfer_engine_info=remote_instance_transfer_engine_info,
-            node_registry=node_registry,
+            parallelism_config_info=parallelism_config_info,
         )
     )
 

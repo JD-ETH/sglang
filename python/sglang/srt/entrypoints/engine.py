@@ -64,6 +64,7 @@ from sglang.srt.managers.scheduler import run_scheduler_process
 from sglang.srt.managers.template_manager import TemplateManager
 from sglang.srt.managers.tokenizer_manager import TokenizerManager
 from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
+    parse_parallelism_config_from_scheduler_infos,
     parse_remote_instance_transfer_engine_info_from_scheduler_infos,
 )
 from sglang.srt.model_loader.inter_node_transfer_engine_comm import (
@@ -175,6 +176,9 @@ class Engine(EngineBase):
             parse_remote_instance_transfer_engine_info_from_scheduler_infos(
                 scheduler_infos
             )
+        )
+        self.parallelism_config = parse_parallelism_config_from_scheduler_infos(
+            scheduler_infos
         )
 
         # Initialize ZMQ sockets
@@ -822,6 +826,91 @@ def _set_envs_and_config(server_args: ServerArgs):
     mp.set_start_method("spawn", force=True)
 
 
+def _wait_for_scheduler_ready(
+    scheduler_pipe_readers: List,
+    scheduler_procs: List,
+) -> List[Dict]:
+    """Wait for the model to finish loading and return flattened scheduler infos."""
+    scheduler_infos = []
+    for i in range(len(scheduler_pipe_readers)):
+        try:
+            data = scheduler_pipe_readers[i].recv()
+        except EOFError:
+            logger.error(
+                f"Rank {i} scheduler is dead. Please check if there are relevant logs."
+            )
+            scheduler_procs[i].join()
+            logger.error(f"Exit code: {scheduler_procs[i].exitcode}")
+            raise
+
+        if data["status"] != "ready":
+            raise RuntimeError(
+                "Initialization failed. Please see the error messages above."
+            )
+
+        if "_dp_scheduler_infos" in data:
+            scheduler_infos.extend(data["_dp_scheduler_infos"])
+        else:
+            scheduler_infos.append(data)
+    return scheduler_infos
+
+
+def _sync_scheduler_infos_across_nodes(
+    server_args: ServerArgs,
+    local_scheduler_infos: List[Dict],
+) -> List[Dict]:
+    """
+    Gather scheduler_infos from all nodes using Gloo collective.
+    Returns merged list containing scheduler info from all ranks across all nodes.
+    """
+    from datetime import timedelta
+
+    import torch.distributed as dist
+
+    METADATA_SYNC_PORT_OFFSET = 10000
+    dist_host, dist_port = server_args.dist_init_addr.rsplit(":", 1)
+    sync_port = int(dist_port) + METADATA_SYNC_PORT_OFFSET
+    sync_init_method = f"tcp://{dist_host}:{sync_port}"
+
+    logger.info(
+        f"Syncing scheduler_infos across {server_args.nnodes} nodes "
+        f"(node_rank={server_args.node_rank}, local_ranks={len(local_scheduler_infos)})"
+    )
+
+    try:
+        dist.init_process_group(
+            backend="gloo",
+            init_method=sync_init_method,
+            world_size=server_args.nnodes,
+            rank=server_args.node_rank,
+            timeout=timedelta(seconds=120),
+        )
+
+        all_node_infos = [None] * server_args.nnodes
+        dist.all_gather_object(all_node_infos, local_scheduler_infos)
+
+        merged_scheduler_infos = []
+        for node_infos in all_node_infos:
+            if node_infos:
+                merged_scheduler_infos.extend(node_infos)
+
+        logger.info(
+            f"Scheduler info sync complete: {len(merged_scheduler_infos)} total ranks"
+        )
+        return merged_scheduler_infos
+
+    except Exception as e:
+        logger.error(
+            f"Failed to sync scheduler_infos across nodes: {e}. "
+            f"Only local ranks will be available."
+        )
+        return local_scheduler_infos
+
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
 def _launch_scheduler_processes(
     server_args: ServerArgs,
     port_args: PortArgs,
@@ -906,9 +995,14 @@ def _launch_subprocesses(
     run_scheduler_process_func: Callable,
     run_detokenizer_process_func: Callable,
     port_args: Optional[PortArgs] = None,
-) -> Tuple[TokenizerManager, TemplateManager, Tuple[Dict], PortArgs]:
+) -> Tuple[TokenizerManager, TemplateManager, List[Dict], PortArgs]:
     """
-    Launch the TokenizerManager in the main process, the Scheduler in a subprocess, and the DetokenizerManager in another subprocess.
+    Launch TokenizerManager, Scheduler subprocess, and DetokenizerManager subprocess.
+
+    Returns:
+        Tuple of (tokenizer_manager, template_manager, scheduler_infos, port_args).
+        For node_rank >= 1, tokenizer_manager and template_manager are None.
+        scheduler_infos contains info from all ranks across all nodes (after cross-node sync).
     """
     # Configure global environment
     configure_logger(server_args)
@@ -927,33 +1021,15 @@ def _launch_subprocesses(
         run_scheduler_process_func=run_scheduler_process_func,
     )
     if server_args.node_rank >= 1:
-        # In multi-node cases, non-zero rank nodes do not need to run tokenizer or detokenizer,
-        # so they can just wait here.
-        scheduler_infos = []
-        for reader in scheduler_pipe_readers:
-            data = reader.recv()
-            assert data["status"] == "ready"
-            scheduler_infos.append(data)
+        scheduler_infos = _wait_for_scheduler_ready(
+            scheduler_pipe_readers, scheduler_procs
+        )
 
-        # Start ZMQ server on non-head nodes to serve transfer engine info
-        if server_args.nnodes > 1 and server_args.remote_instance_weight_loader_start_seed_via_transfer_engine:
-            assert server_args.inter_node_transfer_engine_info_port is not None, \
-                "For multinode scenarios, inter_node_transfer_engine_info_port must be set " \
-                "when `remote_instance_weight_loader_start_seed_via_transfer_engine` is enabled"
-            # Get the transfer engine data ahead of time.
-            local_transfer_engine_info = parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos)
-
-            server = init_transfer_engine_info_server(
-                server_args.inter_node_transfer_engine_info_port,
-                server_args.node_rank
-            )
-            server.set_transfer_engine_info(local_transfer_engine_info)
-            server.start()
-            logger.info(f"Node {server_args.node_rank}: Started transfer engine info ZMQ server on port {server_args.inter_node_transfer_engine_info_port}")
+        if server_args.nnodes > 1:
+            _sync_scheduler_infos_across_nodes(server_args, scheduler_infos)
 
         if os.getenv("SGLANG_BLOCK_NONZERO_RANK_CHILDREN") == "0":
-            # When using `Engine` as a Python API, we don't want to block here.
-            return None, None, None, port_args
+            return None, None, scheduler_infos, port_args
 
         launch_dummy_health_check_server(
             server_args.host, server_args.port, server_args.enable_metrics
@@ -964,7 +1040,7 @@ def _launch_subprocesses(
             logger.error(
                 f"Scheduler or DataParallelController {proc.pid} terminated with {proc.exitcode}"
             )
-        return None, None, None, port_args
+        return None, None, scheduler_infos, port_args
 
     # Launch detokenizer process
     detoken_proc = mp.Process(
@@ -987,25 +1063,19 @@ def _launch_subprocesses(
         template_manager = None
 
     # Wait for the model to finish loading
-    scheduler_infos = []
-    for i in range(len(scheduler_pipe_readers)):
-        try:
-            data = scheduler_pipe_readers[i].recv()
-        except EOFError:
-            logger.error(
-                f"Rank {i} scheduler is dead. Please check if there are relevant logs."
-            )
-            scheduler_procs[i].join()
-            logger.error(f"Exit code: {scheduler_procs[i].exitcode}")
-            raise
-
-        if data["status"] != "ready":
-            raise RuntimeError(
-                "Initialization failed. Please see the error messages above."
-            )
-        scheduler_infos.append(data)
+    scheduler_infos = _wait_for_scheduler_ready(scheduler_pipe_readers, scheduler_procs)
 
     # Get back some info from scheduler to tokenizer_manager
     tokenizer_manager.max_req_input_len = scheduler_infos[0]["max_req_input_len"]
 
-    return tokenizer_manager, template_manager, scheduler_infos, port_args
+    if server_args.nnodes > 1:
+        scheduler_infos = _sync_scheduler_infos_across_nodes(
+            server_args, scheduler_infos
+        )
+
+    return (
+        tokenizer_manager,
+        template_manager,
+        scheduler_infos,
+        port_args,
+    )
