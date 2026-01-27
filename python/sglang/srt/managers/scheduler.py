@@ -2871,7 +2871,8 @@ def run_scheduler_process(
         prefix += f" EP{moe_ep_rank}"
 
     # Config the process
-    setproctitle.setproctitle(f"sglang::scheduler{prefix.replace(' ', '_')}")
+    dash_prefix = prefix.replace(' ', '_')
+    setproctitle.setproctitle(f"sglang::scheduler{dash_prefix}")
     faulthandler.enable()
     kill_itself_when_parent_died()
     parent_process = psutil.Process().parent()
@@ -2916,11 +2917,15 @@ def run_scheduler_process(
             "max_total_num_tokens": scheduler.max_total_num_tokens,
             "max_req_input_len": scheduler.max_req_input_len,
         }
+        tt = server_args.remote_instance_weight_loader_use_transfer_engine()
+        logger.info(f"server_args.remote_instance_weight_loader_use_transfer_engine(): {tt}")
+
         if server_args.remote_instance_weight_loader_use_transfer_engine():
             (
                 remote_instance_transfer_engine_session_id,
                 remote_instance_transfer_engine_weights_info_dict,
             ) = scheduler.get_remote_instance_transfer_engine_info()
+            # logger.info(f"updated remote_instance_transfer_engine_session_id {remote_instance_transfer_engine_session_id}, {remote_instance_transfer_engine_weights_info_dict}")
             result_dict.update(
                 {
                     "tp_rank": tp_rank,

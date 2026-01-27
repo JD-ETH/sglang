@@ -173,7 +173,7 @@ class Engine(EngineBase):
         self.port_args = port_args
         self.remote_instance_transfer_engine_info = (
             parse_remote_instance_transfer_engine_info_from_scheduler_infos(
-                scheduler_infos
+                scheduler_infos, dp_preprocessing=(server_args.dp_size > 1)
             )
         )
 
@@ -941,7 +941,7 @@ def _launch_subprocesses(
                 "For multinode scenarios, inter_node_transfer_engine_info_port must be set " \
                 "when `remote_instance_weight_loader_start_seed_via_transfer_engine` is enabled"
             # Get the transfer engine data ahead of time.
-            local_transfer_engine_info = parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos)
+            local_transfer_engine_info = parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_infos, dp_preprocessing=(server_args.dp_size > 1))
 
             server = init_transfer_engine_info_server(
                 server_args.inter_node_transfer_engine_info_port,

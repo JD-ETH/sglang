@@ -62,6 +62,9 @@ from sglang.srt.utils.common import (
 from sglang.srt.utils.torch_memory_saver_adapter import TorchMemorySaverAdapter
 from sglang.srt.utils.watchdog import Watchdog
 from sglang.utils import TypeBasedDispatcher, get_exception_traceback
+from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
+    parse_remote_instance_transfer_engine_info_from_scheduler_infos,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -497,6 +500,13 @@ class DataParallelController:
         self.max_total_num_tokens = scheduler_info[0]["max_total_num_tokens"]
         self.max_req_input_len = scheduler_info[0]["max_req_input_len"]
 
+        if server_args.remote_instance_weight_loader_use_transfer_engine():
+            assert server_args.pp_size == 1, "currently remote weight transferring for rdma only supports pp_size =1"
+            # the following `self.remote_weight_info_dict` gets info from each single scheduler_info,
+            # so the `dp_preprocessing = False`
+            self.remote_weight_info_dict = parse_remote_instance_transfer_engine_info_from_scheduler_infos(scheduler_info)
+            # logger.info(f"in dp, self.remote_weight_info_dict ready: {self.remote_weight_info_dict}")
+
     def maybe_external_dp_rank_routing(self, req: Req):
         if req.data_parallel_rank is not None:
             logger.debug(f"Direct routing to DP rank {req.data_parallel_rank}")
@@ -597,12 +607,18 @@ def run_data_parallel_controller_process(
         controller = DataParallelController(
             server_args, port_args, run_scheduler_process_func
         )
-        pipe_writer.send(
-            {
+        result_dict = {
                 "status": "ready",
                 "max_total_num_tokens": controller.max_total_num_tokens,
                 "max_req_input_len": controller.max_req_input_len,
             }
+        if server_args.remote_instance_weight_loader_use_transfer_engine():
+            # "tp_rank": (session_id, weight_dict)
+            result_dict.update(
+                {"all_tp_ranks_and_info": controller.remote_weight_info_dict},
+            )
+        pipe_writer.send(
+            result_dict
         )
         if server_args.node_rank == 0:
             controller.event_loop()

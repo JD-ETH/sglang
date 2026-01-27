@@ -28,6 +28,7 @@ from transformers import PretrainedConfig
 
 from sglang.srt.distributed import (
     get_moe_expert_parallel_world_size,
+    get_moe_expert_parallel_rank,
     get_pp_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
@@ -243,7 +244,7 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
             prefix=add_prefix("experts", prefix),
             routing_method_type=RoutingMethodType.Renormalize,
         )
-
+        logger.info(f"in qwen3_moe, rank: ep rank/ ep_size {self.experts.moe_ep_rank}/ {self.experts.moe_ep_size}, etprank/size {self.experts.moe_tp_rank} /  {self.experts.moe_tp_size}")
         self.gate = ReplicatedLinear(
             config.hidden_size,
             config.num_experts,
@@ -939,9 +940,26 @@ class Qwen3MoeForCausalLM(nn.Module):
         )
         self.logits_processor = LogitsProcessor(config)
         self.capture_aux_hidden_states = False
+        self.weight_transfering_dict = {}
+        self.is_weight_transfering_recording = False
+        self.initialize_layers()
+        self.ep_size =  get_moe_expert_parallel_world_size()
+        self.ep_rank =  get_moe_expert_parallel_rank()
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.model.embed_tokens
+    def turn_on_weight_transfer_recording(self):
+        self.is_weight_transfering_recording = True
+        # assert len(self.weight_transfering_dict) == 0
+
+    def turn_off_weight_transfer_recording(self):
+        self.is_weight_transfering_recording = False
+        self.weight_transfering_dict = {}
+        self.initialize_layers()
+
+    def initialize_layers(self):
+        for layer_id in range(self.start_layer, self.end_layer):
+            self.weight_transfering_dict[layer_id] = {}
 
     @torch.no_grad()
     def forward(
@@ -1051,6 +1069,8 @@ class Qwen3MoeForCausalLM(nn.Module):
             ("gate_up_proj", "gate_proj", 0),
             ("gate_up_proj", "up_proj", 1),
         ]
+        updated_name = []
+        could_updated_list = []
 
         expert_params_mapping = FusedMoE.make_expert_params_mapping(
             ckpt_gate_proj_name="gate_proj",
@@ -1074,7 +1094,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                 )
             ):
                 continue
-
+            
             if "rotary_emb.inv_freq" in name:
                 continue
             for param_name, weight_name, shard_id in stacked_params_mapping:
@@ -1095,10 +1115,19 @@ class Qwen3MoeForCausalLM(nn.Module):
                     continue
                 if name not in params_dict:
                     continue
-
+                if self.is_weight_transfering_recording:
+                    qkv_loaded = self.weight_transfering_dict[layer_id].get("qkv", 0)
+                    qkv_loaded += 1
+                    self.weight_transfering_dict[layer_id]["qkv"] = qkv_loaded
+                    if qkv_loaded == 3:
+                        could_updated_list.append(True)
+                        updated_name.append(name)
+                    # else:
+                    #     could_updated_list.append(False)
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
+                
                 break
             else:
                 # Track if this is an expert weight to enable early skipping
@@ -1111,11 +1140,27 @@ class Qwen3MoeForCausalLM(nn.Module):
 
                     # Mark as expert weight regardless of whether we can process it
                     is_expert_weight = True
-
+                    ori_name = name
                     name = name.replace(weight_name, param_name)
                     if name not in params_dict:
                         # Expert weight not on this rank, will be skipped below
                         continue
+                    cc = ( "gate_" in ori_name) or ("up_" in ori_name)
+
+                    # 128
+                    thresh = 2 * ( self.config.num_experts// self.ep_size) if cc else (self.config.num_experts// self.ep_size)
+                    cc_key = "expert_gate_up" if cc else "expert_down"
+                    start_e = self.ep_rank  *  (self.config.num_experts// self.ep_size)
+                    end_e = (self.ep_rank + 1)  *  (self.config.num_experts// self.ep_size)                    
+                    if self.is_weight_transfering_recording and expert_id >= start_e and expert_id < end_e:
+
+                        expert_loaded = self.weight_transfering_dict[layer_id].get(cc_key, 0)
+                        expert_loaded += 1
+                        self.weight_transfering_dict[layer_id][cc_key] = expert_loaded
+
+                        if expert_loaded == thresh:
+                            could_updated_list.append(True)
+                            updated_name.append(name)
 
                     param = params_dict[name]
                     weight_loader = param.weight_loader
@@ -1126,6 +1171,7 @@ class Qwen3MoeForCausalLM(nn.Module):
                         shard_id=shard_id,
                         expert_id=expert_id,
                     )
+                    # updated_name.append(name)
                     break
                 else:
                     if is_expert_weight:
@@ -1144,6 +1190,9 @@ class Qwen3MoeForCausalLM(nn.Module):
                             param, "weight_loader", default_weight_loader
                         )
                         weight_loader(param, loaded_weight)
+                        updated_name.append(name)
+                        if self.is_weight_transfering_recording:
+                            could_updated_list.append(True)
                     else:
                         logger.warning(f"Parameter {name} not found in params_dict")
 
@@ -1155,7 +1204,13 @@ class Qwen3MoeForCausalLM(nn.Module):
                 for layer_id in range(self.start_layer, self.end_layer)
                 if isinstance(self.model.layers[layer_id].mlp, Qwen3MoeSparseMoeBlock)
             }
-
+        # if self.is_weight_transfering_recording:
+        #     assert len(could_updated_list) == len(updated_name)
+        #     return updated_name, could_updated_list
+        # else:
+        # logger.info(f"update self.weight_transfering_dict: {self.weight_transfering_dict} ")
+        return updated_name
+    
     @classmethod
     def get_model_config_for_expert_location(cls, config):
         return ModelConfigForExpertLocation(
