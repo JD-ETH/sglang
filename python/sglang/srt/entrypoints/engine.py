@@ -67,9 +67,6 @@ from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
     parse_parallelism_config_from_scheduler_infos,
     parse_remote_instance_transfer_engine_info_from_scheduler_infos,
 )
-from sglang.srt.model_loader.inter_node_transfer_engine_comm import (
-    init_transfer_engine_info_server,
-)
 from sglang.srt.server_args import PortArgs, ServerArgs
 from sglang.srt.tracing.trace import process_tracing_init, trace_set_thread_info
 from sglang.srt.utils import (
@@ -88,7 +85,6 @@ from sglang.srt.utils import (
 )
 from sglang.srt.utils.torch_memory_saver_adapter import TorchMemorySaverAdapter
 from sglang.version import __version__
-
 logger = logging.getLogger(__name__)
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -172,11 +168,6 @@ class Engine(EngineBase):
         self.template_manager = template_manager
         self.scheduler_info = scheduler_infos[0]
         self.port_args = port_args
-        self.remote_instance_transfer_engine_info = (
-            parse_remote_instance_transfer_engine_info_from_scheduler_infos(
-                scheduler_infos
-            )
-        )
         self.parallelism_config = parse_parallelism_config_from_scheduler_infos(
             scheduler_infos
         )
@@ -867,6 +858,7 @@ def _sync_scheduler_infos_across_nodes(
 
     import torch.distributed as dist
 
+    # TODO: maybe it's better to specify one port?
     METADATA_SYNC_PORT_OFFSET = 10000
     dist_host, dist_port = server_args.dist_init_addr.rsplit(":", 1)
     sync_port = int(dist_port) + METADATA_SYNC_PORT_OFFSET
@@ -1064,7 +1056,6 @@ def _launch_subprocesses(
 
     # Wait for the model to finish loading
     scheduler_infos = _wait_for_scheduler_ready(scheduler_pipe_readers, scheduler_procs)
-
     # Get back some info from scheduler to tokenizer_manager
     tokenizer_manager.max_req_input_len = scheduler_infos[0]["max_req_input_len"]
 
@@ -1072,7 +1063,6 @@ def _launch_subprocesses(
         scheduler_infos = _sync_scheduler_infos_across_nodes(
             server_args, scheduler_infos
         )
-
     return (
         tokenizer_manager,
         template_manager,

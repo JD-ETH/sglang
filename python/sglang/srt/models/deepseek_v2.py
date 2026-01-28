@@ -3731,12 +3731,11 @@ class DeepseekV2ForCausalLM(nn.Module, RemapParamsMixin):
         if self.num_fused_shared_experts > 0:
             assert self.num_fused_shared_experts == 1
             log_info_on_rank0(logger, "Shared experts fusion optimization enabled.")
-        updated_params = []
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
             params_dict = dict(self.named_parameters())
             weight_names = []
-            
             for name, loaded_weight in weights:
                 use_async_loading = should_async_load(loaded_weight)
                 layer_id = get_layer_id(name)
@@ -3812,7 +3811,6 @@ class DeepseekV2ForCausalLM(nn.Module, RemapParamsMixin):
                         func=weight_loader,
                         func_args=(param, loaded_weight, shard_id),
                     )
-                    updated_params.append(name)  # Record updated parameter
                     break
                 else:
                     for mapping in expert_params_mapping:
@@ -3841,7 +3839,6 @@ class DeepseekV2ForCausalLM(nn.Module, RemapParamsMixin):
                                 "expert_id": expert_id,
                             },
                         )
-                        updated_params.append(name)  # Record updated parameter
                         break
                     else:
                         # Skip loading extra bias for GPTQ models.
@@ -3915,7 +3912,6 @@ class DeepseekV2ForCausalLM(nn.Module, RemapParamsMixin):
                                     func=weight_loader,
                                     func_args=(param, fused_weight),
                                 )
-                                updated_params.append(name)  # Record updated parameter
                                 cached_a_proj.pop(q_a_proj_name)
                                 cached_a_proj.pop(kv_a_proj_name)
                         else:
@@ -3941,14 +3937,12 @@ class DeepseekV2ForCausalLM(nn.Module, RemapParamsMixin):
                                 func=weight_loader,
                                 func_args=(param, loaded_weight),
                             )
-                            updated_params.append(name)  # Record updated parameter
 
             # Wait for all tasks to complete and raise any exceptions.
             for future in concurrent.futures.as_completed(futures):
                 future.result()
 
         self.post_load_weights(is_nextn=is_nextn, weight_names=weight_names)
-        return updated_params
 
     def get_embed_and_head(self):
         return self.model.embed_tokens.weight, self.lm_head.weight
