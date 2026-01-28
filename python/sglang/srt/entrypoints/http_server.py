@@ -182,6 +182,7 @@ class _GlobalState:
     # }
     remote_instance_transfer_engine_info: Optional[Dict] = None
     parallelism_config_info: Optional[Dict] = None
+    node_registry: Optional[NodeRegistry] = None
 
 
 _global_state: Optional[_GlobalState] = None
