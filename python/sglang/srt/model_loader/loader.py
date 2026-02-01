@@ -2073,7 +2073,7 @@ class RemoteInstanceModelLoader(BaseModelLoader):
                 "TransferEngine registering memory regions (this may take a few seconds)..."
             )
             # register memory region
-            self.remote_instance_transfer_engine_weight_info = register_memory_region(
+            self.remote_instance_transfer_engine_weight_info, _ = register_memory_region(
                 model, load_config.remote_instance_weight_loader_transfer_engine
             )
             logger.info(

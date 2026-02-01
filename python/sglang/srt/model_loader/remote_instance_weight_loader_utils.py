@@ -155,7 +155,7 @@ def register_memory_region_v1(model, transfer_engine):
 
     end_tic = time.time()
     logger.debug(f"Register memory region time: {(end_tic - start_tic):.4f}s")
-    return weight_mr_dict
+    return weight_mr_dict, None
 
 
 def register_memory_region_v2(model, transfer_engine):
@@ -213,4 +213,4 @@ def register_memory_region_v2(model, transfer_engine):
 
     end_tic = time.time()
     logger.debug(f"Register memory region v2 time: {(end_tic - start_tic):.4f}s")
-    return weight_mr_dict
+    return weight_mr_dict, weight_blocks_for_reg_mr
