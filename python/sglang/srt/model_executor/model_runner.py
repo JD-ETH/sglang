@@ -469,7 +469,7 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             and self.remote_instance_transfer_engine is not None
             and self.remote_instance_transfer_engine_weight_info is None
         ):
-            self.remote_instance_transfer_engine_weight_info = register_memory_region(
+            self.remote_instance_transfer_engine_weight_info, _ = register_memory_region(
                 self.model, self.remote_instance_transfer_engine
             )
 
