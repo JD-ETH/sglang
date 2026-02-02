@@ -764,7 +764,7 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             torch.get_device_module(self.device).set_device(self.gpu_id)
         except Exception:
             logger.warning(
-                f"Context: {self.device=} {self.gpu_id=} {os.environ.get('CUDA_VISIBLE_DEVICES')=} {self.tp_rank=} {self.tp_size=}"
+                f"Context: {self.device=} {self.gpu_id=} {os.environ.get('CUDA_VISIBLE_DEVICES')=} {self.tp_rank=} {self.tp_size=} {self.pp_rank=}  {self.pp_size=} {self.dp_rank=} {self.dp_size=}"
             )
             raise
 
