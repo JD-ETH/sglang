@@ -203,13 +203,13 @@ def register_memory_region_v2(model, transfer_engine):
             weight_blocks_for_reg_mr.append(current_weight_block)
 
     # Register merged memory blocks that hold weights.
-    addrs = [addr for addr, _ in weight_blocks_for_reg_mr]
-    sizes = [size for _, size in weight_blocks_for_reg_mr]
-    ret = transfer_engine.batch_register_memory(addrs, sizes)
-    if ret != 0:
-        raise RuntimeError(
-            f"batch register memory failed for {len(weight_blocks_for_reg_mr)} blocks, error: {ret}"
-        )
+    for weight_block in weight_blocks_for_reg_mr:
+        address, size = weight_block
+        ret = transfer_engine.register_memory(address, size)
+        if ret != 0:
+            raise RuntimeError(
+                f"register memory failed for weight block at address {address} with size {size}, error: {ret}"
+            )
 
     end_tic = time.time()
     logger.debug(f"Register memory region v2 time: {(end_tic - start_tic):.4f}s")
