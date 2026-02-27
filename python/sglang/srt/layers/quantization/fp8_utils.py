@@ -591,6 +591,7 @@ def block_quant_to_tensor_quant(
     x_q_block: torch.Tensor,
     x_s: torch.Tensor,
     block_size: List[int],
+    force_cpu: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """This function converts block-wise quantization to tensor-wise quantization.
     The inputs are block-wise quantization tensor `x_q_block`, block-wise quantization scale
@@ -624,7 +625,7 @@ def block_quant_to_tensor_quant(
 
     x_q_tensor, scale = (
         scaled_fp8_quant(x_dq_block)
-        if _is_cuda
+        if _is_cuda and not force_cpu
         else input_to_float8(x_dq_block, dtype=x_q_block.dtype)
     )
     return x_q_tensor, scale
