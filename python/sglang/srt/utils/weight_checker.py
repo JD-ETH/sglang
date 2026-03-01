@@ -136,6 +136,7 @@ def _postprocess_tensors(
     skipped_buffer_patterns = [
         "k_scale",  
         "v_scale", 
+        "cos_sin_cache",
     ]
     for name in raw:
         for pattern in skipped_buffer_patterns:
