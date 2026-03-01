@@ -134,8 +134,8 @@ def _postprocess_tensors(
 
     # skip k_scale/v_scale for kimi_k2
     skipped_buffer_patterns = [
-        "attn_mqa.k_scale",  
-        "attn_mqa.v_scale", 
+        "k_scale",  
+        "v_scale", 
     ]
     for name in raw:
         for pattern in skipped_buffer_patterns:
