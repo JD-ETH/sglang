@@ -131,6 +131,18 @@ def _postprocess_tensors(
         if name.endswith("weight") and name.replace("weight", "weight_scale_inv") in raw
     ]
     skip_compare_names += quant_names
+
+    # skip k_scale/v_scale for kimi_k2
+    skipped_buffer_patterns = [
+        "attn_mqa.k_scale",  
+        "attn_mqa.v_scale", 
+    ]
+    for name in raw:
+        for pattern in skipped_buffer_patterns:
+            if pattern in name:
+                skip_compare_names.append(name)
+                break
+
     for name in quant_names:
         w_q = raw[name]
         w_s = raw[name.replace("weight", "weight_scale_inv")]
