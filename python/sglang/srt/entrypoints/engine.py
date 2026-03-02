@@ -869,13 +869,28 @@ def _sync_scheduler_infos_across_nodes(
         f"(node_rank={server_args.node_rank}, local_ranks={len(local_scheduler_infos)})"
     )
 
+    MAX_SYNC_RETRIES = 3
+    SYNC_RETRY_DELAY = 10  # seconds
+
     try:
-        pg = StatelessProcessGroup.create(
-            host=dist_host,
-            port=sync_port,
-            rank=server_args.node_rank,
-            world_size=server_args.nnodes,
-        )
+        for attempt in range(MAX_SYNC_RETRIES):
+            try:
+                pg = StatelessProcessGroup.create(
+                    host=dist_host,
+                    port=sync_port,
+                    rank=server_args.node_rank,
+                    world_size=server_args.nnodes,
+                )
+                break
+            except Exception as e:
+                if attempt < MAX_SYNC_RETRIES - 1:
+                    logger.warning(
+                        f"Scheduler sync attempt {attempt + 1}/{MAX_SYNC_RETRIES} failed: {e}. "
+                        f"Retrying in {SYNC_RETRY_DELAY}s..."
+                    )
+                    time.sleep(SYNC_RETRY_DELAY)
+                else:
+                    raise
 
         all_node_infos = pg.all_gather_obj(local_scheduler_infos)
 
