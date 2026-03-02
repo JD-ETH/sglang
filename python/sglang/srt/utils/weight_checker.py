@@ -140,20 +140,34 @@ def _postprocess_tensors(
         if name.endswith("weight") and name.replace("weight", "weight_scale_inv") in raw
     ]
     skip_compare_names += quant_names
+
+    # skip k_scale/v_scale for kimi_k2
+    skipped_buffer_patterns = [
+        "k_scale",  
+        "v_scale", 
+        "cos_sin_cache",
+    ]
+    for name in raw:
+        for pattern in skipped_buffer_patterns:
+            if pattern in name:
+                skip_compare_names.append(name)
+                break
+
     for name in quant_names:
         w_q = raw[name]
         w_s = raw[name.replace("weight", "weight_scale_inv")]
 
         try:
             # TODO this is only needed for Blackwell
-            w_s_inverse_transformed = inverse_transform_scale_ue8m0(
-                w_s, mn=w_q.shape[-2]
-            )
+            # w_s_inverse_transformed = inverse_transform_scale_ue8m0(
+            #     w_s, mn=w_q.shape[-2]
+            # )
+            w_s_inverse_transformed = w_s
             w_dequant = block_quant_dequant(
                 w_q,
                 w_s_inverse_transformed,
                 # TODO do not hardcode
-                block_size=[128, 128],
+                block_size=[64, 64],
                 dtype=torch.bfloat16,
             )
             yield name, True, w_dequant
