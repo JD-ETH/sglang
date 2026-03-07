@@ -1467,6 +1467,12 @@ class UpdateWeightVersionReqInput(BaseReq):
 
 
 @dataclass
+class UpdateWeightVersionReqOutput(BaseReq):
+    success: bool
+    message: str
+
+
+@dataclass
 class GetWeightsByNameReqInput(BaseReq):
     name: str
     truncate_size: int = 100

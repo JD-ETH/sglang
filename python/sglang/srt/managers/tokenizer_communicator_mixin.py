@@ -80,6 +80,8 @@ from sglang.srt.managers.io_struct import (
     UpdateWeightsFromIPCReqOutput,
     UpdateWeightsFromTensorReqInput,
     UpdateWeightsFromTensorReqOutput,
+    UpdateWeightVersionReqInput,
+    UpdateWeightVersionReqOutput,
 )
 from sglang.srt.server_args import LoRARef, ServerArgs
 from sglang.srt.utils import get_bool_env_var
@@ -229,6 +231,9 @@ class TokenizerCommunicatorMixin:
         self.update_lora_adapter_communicator = _Communicator(
             self.send_to_scheduler, server_args.dp_size
         )
+        self.update_weight_version_communicator = _Communicator(
+            self.send_to_scheduler, server_args.dp_size
+        )
         self.get_load_communicator = _Communicator(
             self.send_to_scheduler, server_args.dp_size, mode="watching"
         )
@@ -327,6 +332,10 @@ class TokenizerCommunicatorMixin:
                 (
                     LoRAUpdateOutput,
                     self.update_lora_adapter_communicator.handle_recv,
+                ),
+                (
+                    UpdateWeightVersionReqOutput,
+                    self.update_weight_version_communicator.handle_recv,
                 ),
                 (
                     GetLoadReqOutput,
@@ -845,6 +854,18 @@ class TokenizerCommunicatorMixin:
         self.auto_create_handle_loop()
         results = await self.check_weights_communicator(obj)
         return _Communicator.merge_results(results)
+
+    async def update_weight_version(
+        self: TokenizerManager,
+        obj: UpdateWeightVersionReqInput,
+        request: Optional[fastapi.Request] = None,
+    ) -> Tuple[bool, str]:
+        self.auto_create_handle_loop()
+        results = await self.update_weight_version_communicator(obj)
+        result = results[0]
+        if result.success:
+            self._update_weight_version_if_provided(obj.new_version)
+        return result.success, result.message
 
     async def slow_down(
         self: TokenizerManager,

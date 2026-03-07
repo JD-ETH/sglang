@@ -61,6 +61,7 @@ from sglang.srt.managers.io_struct import (
     UpdateWeightsFromDistributedReqInput,
     UpdateWeightsFromIPCReqInput,
     UpdateWeightsFromTensorReqInput,
+    UpdateWeightVersionReqInput,
 )
 from sglang.srt.managers.multi_tokenizer_mixin import MultiTokenizerRouter
 from sglang.srt.managers.scheduler import run_scheduler_process
@@ -638,6 +639,13 @@ class Engine(EngineBase):
         )
         return self.loop.run_until_complete(
             self.tokenizer_manager.update_weights_from_ipc(obj, None)
+        )
+
+    def update_weight_version(self, new_version: str):
+        """Update the weight version and run post_load_weights if applicable."""
+        obj = UpdateWeightVersionReqInput(new_version=new_version)
+        return self.loop.run_until_complete(
+            self.tokenizer_manager.update_weight_version(obj, None)
         )
 
     def get_weights_by_name(self, name: str, truncate_size: int = 100):
