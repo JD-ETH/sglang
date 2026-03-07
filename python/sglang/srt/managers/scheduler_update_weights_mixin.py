@@ -37,6 +37,8 @@ from sglang.srt.managers.io_struct import (
     UpdateWeightsFromIPCReqOutput,
     UpdateWeightsFromTensorReqInput,
     UpdateWeightsFromTensorReqOutput,
+    UpdateWeightVersionReqInput,
+    UpdateWeightVersionReqOutput,
 )
 
 if TYPE_CHECKING:
@@ -233,6 +235,19 @@ class SchedulerUpdateWeightsMixin:
             logger.warning(f"check_weights see error: {e}")
             traceback.print_exc()
             return CheckWeightsReqOutput(success=False, message=f"{e}")
+
+    def update_weight_version(
+        self: Scheduler, recv_req: UpdateWeightVersionReqInput
+    ):
+        """Update weight version, calling post_load_weights if available."""
+        try:
+            model = self.tp_worker.model_runner.model
+            if hasattr(model, "post_load_weights"):
+                model.post_load_weights()
+            return UpdateWeightVersionReqOutput(success=True, message="Success")
+        except Exception as e:
+            logger.error(f"post_load_weights failed: {e}")
+            return UpdateWeightVersionReqOutput(success=False, message=str(e))
 
     def save_remote_model(self: Scheduler, params):
         url = params["url"]

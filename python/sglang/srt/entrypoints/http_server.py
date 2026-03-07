@@ -986,32 +986,18 @@ async def update_weights_from_ipc(obj: UpdateWeightsFromIPCReqInput, request: Re
 
 @app.post("/update_weight_version")
 async def update_weight_version(obj: UpdateWeightVersionReqInput, request: Request):
-    """Update the weight version. This operation requires no active requests."""
+    """Update the weight version and run post_load_weights if applicable."""
     if obj.abort_all_requests:
         _global_state.tokenizer_manager.abort_request(abort_all=True)
 
-    # Use a simple approach without the complex lock mechanism for now
-    # since weight_version update is a simple operation that doesn't affect model weights
-    try:
-        # Update the weight version in server args (the single source of truth)
-        _global_state.tokenizer_manager.server_args.weight_version = obj.new_version
-
-        return ORJSONResponse(
-            {
-                "success": True,
-                "message": f"Weight version updated to {obj.new_version}",
-                "new_version": obj.new_version,
-            },
-            status_code=HTTPStatus.OK,
-        )
-    except Exception as e:
-        return ORJSONResponse(
-            {
-                "success": False,
-                "message": f"Failed to update weight version: {str(e)}",
-            },
-            status_code=HTTPStatus.BAD_REQUEST,
-        )
+    success, message = await _global_state.tokenizer_manager.update_weight_version(
+        obj, request
+    )
+    content = {"success": success, "message": message}
+    if success:
+        return ORJSONResponse(content, status_code=HTTPStatus.OK)
+    else:
+        return ORJSONResponse(content, status_code=HTTPStatus.BAD_REQUEST)
 
 
 @app.api_route("/get_weights_by_name", methods=["GET", "POST"])
