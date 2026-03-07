@@ -2438,8 +2438,12 @@ class ParallelismContext:
         mock_pp_group = self._create_mock_group(conf.pp_size, conf.pp_rank)
         mock_ep_group = self._create_mock_group(conf.ep_size, conf.ep_rank)
         mock_moe_tp_group = self._create_mock_group(conf.moe_tp_size, conf.moe_tp_rank)
-        mock_attn_tp_group = self._create_mock_group(conf.attn_tp_size, conf.attn_tp_rank)
-        mock_attn_cp_group = self._create_mock_group(conf.attn_cp_size, conf.attn_cp_rank)
+        mock_attn_tp_group = self._create_mock_group(
+            conf.attn_tp_size, conf.attn_tp_rank
+        )
+        mock_attn_cp_group = self._create_mock_group(
+            conf.attn_cp_size, conf.attn_cp_rank
+        )
         mock_moe_dp_group = self._create_mock_group(conf.moe_dp_size, conf.moe_dp_rank)
 
         # Set the global group objects directly on parallel_state module

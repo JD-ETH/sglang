@@ -174,7 +174,7 @@ class Engine(EngineBase):
         self.scheduler_info = scheduler_infos[0]
         self.port_args = port_args
         self.parallelism_config = parse_parallelism_config_from_scheduler_infos(
-            scheduler_infos
+            scheduler_init_result.scheduler_infos
         )
 
         # Initialize ZMQ sockets
