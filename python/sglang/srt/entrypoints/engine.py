@@ -1103,7 +1103,9 @@ def _launch_subprocesses(
         )
 
         if server_args.nnodes > 1:
-            _sync_scheduler_infos_across_nodes(server_args, scheduler_infos)
+            scheduler_infos = _sync_scheduler_infos_across_nodes(
+                server_args, scheduler_infos
+            )
 
         if os.getenv("SGLANG_BLOCK_NONZERO_RANK_CHILDREN") == "0":
             return None, None, scheduler_infos, port_args
