@@ -36,6 +36,7 @@ import torch
 import uvloop
 import zmq
 
+from sglang.srt.distributed.utils import StatelessProcessGroup
 from sglang.srt.entrypoints.EngineBase import EngineBase
 from sglang.srt.managers.data_parallel_controller import (
     run_data_parallel_controller_process,
@@ -86,7 +87,6 @@ from sglang.srt.utils import (
     set_prometheus_multiproc_dir,
     set_ulimit,
 )
-from sglang.srt.distributed.utils import StatelessProcessGroup
 from sglang.srt.utils.torch_memory_saver_adapter import TorchMemorySaverAdapter
 from sglang.version import __version__
 
@@ -174,7 +174,7 @@ class Engine(EngineBase):
         self.scheduler_info = scheduler_infos[0]
         self.port_args = port_args
         self.parallelism_config = parse_parallelism_config_from_scheduler_infos(
-            scheduler_init_result.scheduler_infos
+            scheduler_infos
         )
 
         # Initialize ZMQ sockets
