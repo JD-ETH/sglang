@@ -142,6 +142,7 @@ from sglang.srt.managers.template_manager import TemplateManager
 from sglang.srt.managers.tokenizer_manager import ServerStatus, TokenizerManager
 from sglang.srt.metrics.func_timer import enable_func_timer
 from sglang.srt.model_loader.remote_instance_weight_loader_utils import (
+    parse_parallelism_config_from_scheduler_infos,
     parse_remote_instance_transfer_engine_info_from_scheduler_infos,
 )
 from sglang.srt.parser.reasoning_parser import ReasoningParser
