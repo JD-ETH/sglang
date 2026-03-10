@@ -96,6 +96,14 @@ class DeepseekV2WeightLoaderMixin:
     stacked_params_mapping: List[Tuple[str, str, int]]
     expert_params_mapping: List[Tuple[str, str, int, int]]
 
+    def mutate_weight_preload(self, name: str) -> str:
+        """Override in subclass for model-specific weight name mutations."""
+        return name
+
+    def custom_scale_remap(self, name: str) -> str:
+        """Override in subclass for model-specific scale remapping."""
+        return name
+
     def do_load_weights(
         self,
         weights: Iterable[Tuple[str, torch.Tensor]],
@@ -135,11 +143,7 @@ class DeepseekV2WeightLoaderMixin:
                     )
                 ):
                     continue
-                if self.num_fused_shared_experts > 0 and "mlp.shared_experts" in name:
-                    name = name.replace(
-                        "mlp.shared_experts",
-                        f"mlp.experts.{self.config.n_routed_experts}",
-                    )
+                name = self.mutate_weight_preload(name)
 
                 weight_names.append(name)
 
@@ -310,12 +314,7 @@ class DeepseekV2WeightLoaderMixin:
                                 "k_scale" in name or "v_scale" in name
                             ) and name not in params_dict:
                                 # modelopt attn kv scale is named differently
-                                for scale in ["k_scale", "v_scale"]:
-                                    if scale in name:
-                                        name = name.replace(
-                                            f"{scale[0]}_proj", "attn_mqa"
-                                        )
-                                        break
+                                name = self.custom_scale_remap(name)
                             if name not in params_dict:
                                 # modelopt ckpt contains not needed weights for MTP module:
                                 # model.decoder.self_attn.attn_mqa.v_scale and
