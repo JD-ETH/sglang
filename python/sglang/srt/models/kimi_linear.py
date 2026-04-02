@@ -759,6 +759,7 @@ class KimiLinearForCausalLM(nn.Module):
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 try:
+                    print(f"fffffffffffffffffffffffshard {name}, {shard_id}")
                     weight_loader(param, loaded_weight, shard_id)
                 except:
                     raise NotImplementedError(f"weight error {name}")
