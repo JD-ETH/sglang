@@ -758,7 +758,10 @@ class KimiLinearForCausalLM(nn.Module):
                 #     continue
                 param = params_dict[name]
                 weight_loader = param.weight_loader
-                weight_loader(param, loaded_weight, shard_id)
+                try:
+                    weight_loader(param, loaded_weight, shard_id)
+                except:
+                    raise NotImplementedError(f"weight error {name}")
                 break
             else:
                 for idx, (param_name, weight_name, expert_id, shard_id) in enumerate(
