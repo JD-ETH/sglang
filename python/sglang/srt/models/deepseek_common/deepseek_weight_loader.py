@@ -494,7 +494,7 @@ class DeepseekV2WeightLoaderMixin:
                             )
                     else:
                         w, scale = block_quant_to_tensor_quant(
-                            weight, weight_scale, weight_block_size
+                            weight, weight_scale, weight_block_size, force_cpu=weight.is_cpu
                         )
                         self_attn.w_scale = scale
                 else:
