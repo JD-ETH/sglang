@@ -128,7 +128,7 @@ class UnquantizedLinearMethod(LinearMethodBase):
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
 
         print(f"dsadhasjhd 8921n")
-        layer.w13_weight.data = torch.ones_like(layer.w13_weight.data)
+        layer.weight.data = torch.ones_like(layer.weight.data,requires_grad=False,)
         torch.cuda.empty_cache()
         if _is_cpu and _is_cpu_amx_available:
             _amx_process_weight_after_loading(layer, ["weight"])
