@@ -126,6 +126,7 @@ class UnquantizedLinearMethod(LinearMethodBase):
         set_weight_attrs(weight, extra_weight_attrs)
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        
         if _is_cpu and _is_cpu_amx_available:
             _amx_process_weight_after_loading(layer, ["weight"])
 
@@ -226,6 +227,15 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, MultiPlatformOp):
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         # Skip aiter weight shuffle when using non-auto MoE backend (e.g., triton, triton_kernels)
         # because aiter CK kernels don't support all GEMM dimensions
+        print(f"dashdjaskhdjkahsjdaskljdklajs")
+        layer.w13_weight = torch.nn.Parameter(
+                torch.ones_like(layer.w13_weight.data),
+                requires_grad=False,
+            )
+        layer.w2_weight = torch.nn.Parameter(
+                torch.ones_like(layer.w13_weight.data),
+                requires_grad=False,
+            )        
         _should_use_aiter_moe = _use_aiter and get_moe_runner_backend().is_auto()
         if _should_use_aiter_moe:
             layer.w13_weight = torch.nn.Parameter(
