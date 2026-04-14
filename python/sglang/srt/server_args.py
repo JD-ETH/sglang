@@ -4976,7 +4976,7 @@ class ServerArgs:
             "--remote-instance-weight-loader-ib-device",
             type=str,
             default=ServerArgs.remote_instance_weight_loader_ib_device,
-            help="The InfiniBand devices for P2P RDMA weight transfer via Mooncake TransferEngine. "
+            help="Network device for model weight registration used by Mooncake TransferEngine. "
             "Accepts a single device (e.g., mlx5_0), multiple comma-separated devices "
             "(e.g., mlx5_0,mlx5_1), a JSON per-GPU mapping "
             '(e.g., \'{"0":"mlx5_1","1":"mlx5_5"}\'), or a path to a JSON file. '

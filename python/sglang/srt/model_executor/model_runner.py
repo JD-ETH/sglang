@@ -669,12 +669,9 @@ class ModelRunner(ModelRunnerKVCacheMixin):
 
         self.remote_instance_transfer_engine = TransferEngine()
         local_ip = get_local_ip_auto()
-        device_name = envs.MOONCAKE_DEVICE.get() or (
-            get_ib_devices_for_gpu(
-                self.server_args.remote_instance_weight_loader_ib_device,
-                self.gpu_id,
-            )
-            or ""
+        device_name = envs.MOONCAKE_DEVICE.get() or get_ib_devices_for_gpu(
+            self.server_args.remote_instance_weight_loader_ib_device,
+            self.gpu_id,
         )
         self.remote_instance_transfer_engine.initialize(
             local_ip, "P2PHANDSHAKE", "rdma", device_name
