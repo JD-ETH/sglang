@@ -90,9 +90,6 @@ class EngineInfoBootstrapServer:
 
             return {"rank": rank, "remote_instance_transfer_engine_info": list(info)}
 
-        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
-        self._server = uvicorn.Server(config)
-
         @app.put("/register_parallelism_config")
         def register_parallelism_config(data: dict):
             try:
@@ -123,6 +120,9 @@ class EngineInfoBootstrapServer:
                 )
 
             return config
+
+        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+        self._server = uvicorn.Server(config)
 
         self._thread = threading.Thread(
             target=self._server.run,

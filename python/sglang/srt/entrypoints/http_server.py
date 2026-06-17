@@ -1160,8 +1160,8 @@ async def parallelism_config(rank: int = None):
         )
         if resp.status_code == 200:
             return resp.json()
-    except Exception:
-        pass
+    except (requests.exceptions.RequestException, ValueError) as e:
+        logger.warning(f"Failed to get parallelism config for rank {rank}: {e}")
 
     return Response(status_code=HTTPStatus.BAD_REQUEST)
 
