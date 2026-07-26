@@ -52,11 +52,11 @@ __all__ = [
     "filter_pp_weights",
     "register_weight_remap",
     "get_weight_remap",
-
     "MultiInputFusion",
     "DEEPSEEK_GATE_UP_MAPPING",
     "remap_fused_shared_expert_names",
-    "maybe_remap_deepseek_mla_kv_scale",]
+    "maybe_remap_deepseek_mla_kv_scale",
+]
 
 
 class StackedParamsDispatch(msgspec.Struct, frozen=True):
@@ -216,7 +216,9 @@ class ExpertParamsDispatch(msgspec.Struct, frozen=True):
             if param is None:
                 return target
             weight_loader = getattr(param, "weight_loader", default_weight_loader)
-            try:
+            if weight_loader is default_weight_loader:
+                weight_loader(param, tensor)
+            else:
                 weight_loader(
                     param,
                     tensor,
@@ -224,8 +226,6 @@ class ExpertParamsDispatch(msgspec.Struct, frozen=True):
                     shard_id=shard_id,
                     expert_id=expert_id,
                 )
-            except TypeError:
-                weight_loader(param, tensor)
             return target
         return None
 
@@ -330,6 +330,20 @@ def load_qwen35_moe_checkpoint_weights(
         if any(sub in name for sub in skip_substrs):
             continue
         name = normalize_qwen35_weight_name(name)
+        is_visual_weight = remap_visual and "visual" in name
+        if is_visual_weight:
+            name = name.replace("attn.qkv.", "attn.qkv_proj.")
+            name = name.replace("model.visual.", "visual.")
+            if name.endswith(ignore_suffixes) and name not in params_dict:
+                continue
+            if name in params_dict:
+                param = params_dict[name]
+                weight_loader = getattr(param, "weight_loader", default_weight_loader)
+                weight_loader(param, loaded_weight)
+                loaded_params.add(name)
+            else:
+                log.warning("Parameter %s not found in params_dict", name)
+            continue
         if on_embed_for_tied_lm_head is not None:
             on_embed_for_tied_lm_head(name, loaded_weight)
         if enable_shared_expert_fusion and shared_expert_slot is not None:
@@ -356,6 +370,10 @@ def load_qwen35_moe_checkpoint_weights(
             active_expert_dispatch = ExpertParamsDispatch.from_fused_moe_mapping(
                 list(fused_gate_up_mapping)
             )
+        if encoder_only and (
+            "experts." in name or "shared_expert." in name or "shared_experts." in name
+        ):
+            continue
         target = try_load_stacked_skip_moe_experts(
             stacked_mapping, name, loaded_weight, params_dict
         )
@@ -416,9 +434,6 @@ def load_qwen35_moe_checkpoint_weights(
         ):
             loaded_params.add(name)
             continue
-        if remap_visual and "visual" in name:
-            name = name.replace(r"attn.qkv.", r"attn.qkv_proj.")
-            name = name.replace(r"model.visual.", r"visual.")
         if name.endswith(ignore_suffixes) and name not in params_dict:
             continue
         if name in params_dict:
@@ -540,6 +555,7 @@ def _llama_remap(model: nn.Module) -> WeightsMapper:
         }
     )
 
+
 DEEPSEEK_GATE_UP_MAPPING = STANDARD_GATE_UP_MAPPING
 
 
@@ -641,6 +657,6 @@ def maybe_remap_deepseek_mla_kv_scale(
 def _deepseek_mla_remap(model: nn.Module) -> WeightsMapper:
     n_routed = getattr(model.config, "n_routed_experts", None)
     substr_map: dict[str, str | None] = {}
-    if n_routed is not None:
+    if n_routed is not None and getattr(model, "num_fused_shared_experts", 0) > 0:
         substr_map["mlp.shared_experts"] = f"mlp.experts.{n_routed}"
     return WeightsMapper(orig_to_new_substr=substr_map)

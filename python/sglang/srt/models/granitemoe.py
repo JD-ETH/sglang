@@ -381,7 +381,12 @@ class GraniteMoeForCausalLM(nn.Module):
                 new_weights[gate_name] = p
             else:
                 new_weights[n] = p
-        mixtral.MixtralForCausalLM.load_weights(self, new_weights.items())
+
+        # GraniteMoe borrows Mixtral's loader but does not inherit its v2
+        # submodule loading hooks, so keep this wrapper on the legacy path.
+        return mixtral.MixtralForCausalLM._legacy_load_weights(
+            self, new_weights.items()
+        )
 
 
 EntryClass = [GraniteMoeForCausalLM]

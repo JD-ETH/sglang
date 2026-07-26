@@ -46,8 +46,11 @@ class TestDeepseekSharedExpertRemap(CustomTestCase):
             "model.layers.3.mlp.experts.256.gate_proj.weight",
         )
 
-    def test_registry_shared_expert_substr(self):
-        model = SimpleNamespace(config=SimpleNamespace(n_routed_experts=128))
+    def test_registry_remaps_shared_expert_when_fusion_enabled(self):
+        model = SimpleNamespace(
+            config=SimpleNamespace(n_routed_experts=128),
+            num_fused_shared_experts=1,
+        )
         mapper = _deepseek_mla_remap(model)
         mapped = list(
             mapper.apply(
@@ -63,6 +66,16 @@ class TestDeepseekSharedExpertRemap(CustomTestCase):
             mapped[0][0],
             "model.layers.0.mlp.experts.128.down_proj.weight",
         )
+
+    def test_registry_preserves_shared_expert_when_fusion_disabled(self):
+        model = SimpleNamespace(
+            config=SimpleNamespace(n_routed_experts=128),
+            num_fused_shared_experts=0,
+        )
+        mapper = _deepseek_mla_remap(model)
+        original_name = "model.layers.0.mlp.shared_experts.down_proj.weight"
+        mapped = list(mapper.apply([(original_name, torch.zeros(1))]))
+        self.assertEqual(mapped[0][0], original_name)
 
 
 class TestDeepseekMlaKvScaleRemap(CustomTestCase):
@@ -118,6 +131,28 @@ class TestExpertParamsDispatch(CustomTestCase):
         target = dispatch.try_load(name, torch.ones(1), params)
         self.assertEqual(target, "model.layers.1.mlp.experts.w13_weight")
         self.assertEqual(calls[0][1], "w1")
+
+    def test_propagates_weight_loader_type_error_without_retry(self):
+        calls = []
+
+        def _wl(param, tensor, qualname, shard_id=None, expert_id=None):
+            calls.append((qualname, shard_id, expert_id))
+            raise TypeError("loader implementation failed")
+
+        param = Parameter(torch.zeros(1))
+        param.weight_loader = _wl
+        params = {"model.layers.1.mlp.experts.w13_weight": param}
+        dispatch = ExpertParamsDispatch(
+            mappings=(("experts.w13_", "experts.3.gate_proj.", 3, "w1"),)
+        )
+
+        with self.assertRaisesRegex(TypeError, "loader implementation failed"):
+            dispatch.try_load(
+                "model.layers.1.mlp.experts.3.gate_proj.weight",
+                torch.ones(1),
+                params,
+            )
+        self.assertEqual(len(calls), 1)
 
 
 class TestDeepseekV2WeightLoaderV2Gate(CustomTestCase):
