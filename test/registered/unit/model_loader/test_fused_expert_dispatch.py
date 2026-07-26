@@ -1,16 +1,20 @@
 """CPU unit tests for FusedExpertDispatch expert fan-out."""
 
-from sglang.test.ci.ci_register import register_cpu_ci
-
-register_cpu_ci(est_time=5, suite="base-a-test-cpu")
-
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import torch
 from torch.nn import Parameter
 
-from sglang.srt.model_loader.auto_loader import FusedExpertDispatch
+from sglang.srt.model_loader.auto_loader import (
+    ExpertParamsDispatch,
+    FusedExpertDispatch,
+    load_qwen35_moe_checkpoint_weights,
+)
+from sglang.test.ci.ci_register import register_cpu_ci
+
+register_cpu_ci(est_time=5, suite="base-a-test-cpu")
 
 
 class TestFusedExpertDispatch(unittest.TestCase):
@@ -70,6 +74,61 @@ class TestFusedExpertDispatch(unittest.TestCase):
             param, tensor, "experts.w13_weight", "w1", 4
         )
         self.assertEqual(calls, [0, 1, 2, 3])
+
+
+class TestQwen35CheckpointRouting(unittest.TestCase):
+    def test_visual_mlp_weight_bypasses_text_stacked_dispatch(self):
+        loaded = []
+        param = Parameter(torch.zeros(2, 2))
+        param.weight_loader = lambda _param, tensor: loaded.append(tensor)
+        runtime_name = "visual.mlp.gate_proj.weight"
+        module = SimpleNamespace(
+            named_parameters=lambda remove_duplicate=False: [(runtime_name, param)]
+        )
+        tensor = torch.ones(2, 2)
+
+        result = load_qwen35_moe_checkpoint_weights(
+            module,
+            [("model.visual.mlp.gate_proj.weight", tensor)],
+            num_experts=1,
+            expert_dispatch=ExpertParamsDispatch(),
+            fused_dispatch=None,
+            skip_substrs=(),
+            remap_visual=True,
+        )
+
+        self.assertEqual(result, {runtime_name})
+        self.assertEqual(len(loaded), 1)
+        torch.testing.assert_close(loaded[0], tensor)
+
+    def test_encoder_only_skips_all_expert_dispatch(self):
+        calls = []
+
+        def weight_loader(param, tensor, qualname, shard_id=None, expert_id=None):
+            calls.append((qualname, shard_id, expert_id))
+
+        param = Parameter(torch.zeros(1))
+        param.weight_loader = weight_loader
+        runtime_name = "model.layers.0.mlp.experts.w13_weight"
+        module = SimpleNamespace(
+            named_parameters=lambda remove_duplicate=False: [(runtime_name, param)]
+        )
+        dispatch = ExpertParamsDispatch(
+            mappings=(("experts.w13_", "experts.0.gate_proj.", 0, "w1"),)
+        )
+
+        result = load_qwen35_moe_checkpoint_weights(
+            module,
+            [("model.layers.0.mlp.experts.0.gate_proj.weight", torch.ones(1))],
+            num_experts=1,
+            expert_dispatch=dispatch,
+            fused_dispatch=None,
+            skip_substrs=(),
+            encoder_only=True,
+        )
+
+        self.assertEqual(result, set())
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
